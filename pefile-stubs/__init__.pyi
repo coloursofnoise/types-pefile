@@ -1,18 +1,44 @@
 from contextlib import AbstractContextManager
+from abc import ABC
+import mmap
 from types import TracebackType
 from . import ordlookup as ordlookup
-from typing import Any, Callable, Literal, ParamSpec, Self, TypeVar, TypedDict, overload
-from _typeshed import ReadableBuffer
+from typing import (
+    Any,
+    Callable,
+    Generic,
+    Literal,
+    ParamSpec,
+    Self,
+    Sequence,
+    TypeVar,
+    TypedDict,
+    overload,
+)
 from hashlib import _Hash
 
+# TypeVars
 _P = ParamSpec("_P")
 _T = TypeVar("_T")
 _K = TypeVar("_K")
 _V = TypeVar("_V")
-_DATA_TYPE = ReadableBuffer
-_DWORD = int
-_WORD = int
-_QWORD = int
+_Ptr = TypeVar("_Ptr", _UInt32, _UInt64)
+
+# Primitive Types
+class _char(bytes):  # c
+    def __class_getitem__(cls, key: int) -> type[bytes]: ...  # [n]s
+
+_UInt64 = int  # Q
+_UInt32 = int  # I
+_UInt16 = int  # H
+_Int32 = int  # I
+_byte = bytes  # B
+_WORD = _UInt16
+_DWORD = _UInt32
+_QWORD = _UInt64
+
+# Other TypeAliases
+_DATA_TYPE = bytes | bytearray | mmap.mmap
 
 __author__: str = ...
 __version__: str = ...
@@ -24,9 +50,11 @@ def lru_cache(
     maxsize: int = ..., typed: bool = ..., copy: bool = ...
 ) -> Callable[[Callable[_P, _T]], Callable[_P, _T]]: ...
 @lru_cache(maxsize=2048)
-def cache_adjust_FileAlignment(val, file_alignment): ...
+def cache_adjust_FileAlignment(val: int, file_alignment: int): ...
 @lru_cache(maxsize=2048)
-def cache_adjust_SectionAlignment(val, section_alignment, file_alignment): ...
+def cache_adjust_SectionAlignment(
+    val: int, section_alignment: int, file_alignment: int
+): ...
 def count_zeroes(data: list[int]) -> int: ...
 
 fast_load: bool = ...
@@ -52,10 +80,16 @@ IMAGE_ORDINAL_FLAG64: Literal[0x8000000000000000] = ...
 OPTIONAL_HEADER_MAGIC_PE: Literal[0x10B] = ...
 OPTIONAL_HEADER_MAGIC_PE_PLUS: Literal[0x20B] = ...
 
-def two_way_dict(pairs: list[tuple[_K, _V]]) -> dict[_K | _V, _K | _V]: ...
+class TwoWayDict(dict[_K | _V, _V | _K]):
+    @overload
+    def __getitem__(self, key: _K) -> _V: ...
+    @overload
+    def __getitem__(self, key: _V) -> _K: ...
+
+def two_way_dict(pairs: list[tuple[_K, _V]]) -> TwoWayDict[_K, _V]: ...
 
 _NAME_LOOKUP_LIST = list[tuple[str, bytes]]
-_NAME_LOOKUP = dict[str | bytes, str | bytes]
+_NAME_LOOKUP = TwoWayDict[str, bytes]
 
 directory_entry_types: _NAME_LOOKUP_LIST = ...
 DIRECTORY_ENTRY: _NAME_LOOKUP = ...
@@ -140,12 +174,15 @@ class Dump:
 
 STRUCT_SIZEOF_TYPES: dict[str, int] = ...
 
-_STRUCTURE_FORMAT = tuple[str, tuple[str, ...]]
+_STRUCTURE_FORMAT = tuple[str, Sequence[str]]
+_NAMED_STRUCTURE_FORMAT = tuple[_T, Sequence[str]]
 
 @lru_cache(maxsize=2048)
-def sizeof_type(t): ...
+def sizeof_type(t: str) -> int: ...
 @lru_cache(maxsize=2048, copy=True)
-def set_format(format: _STRUCTURE_FORMAT): ...
+def set_format(
+    format: _STRUCTURE_FORMAT,
+) -> tuple[str, list[None], dict[str, int], list[str], int]: ...
 
 class _Structure_Dict_Value(TypedDict):
     FileOffset: int
@@ -153,6 +190,7 @@ class _Structure_Dict_Value(TypedDict):
     Value: str
 
 class Structure:
+    __file_offset__: int
 
     def __init__(
         self,
@@ -175,6 +213,25 @@ class Structure:
     def dump_dict(self) -> dict[str, str | _Structure_Dict_Value]: ...
 
 class SectionStructure(Structure):
+    pe: PE
+    PhysicalAddress: _UInt32
+    VirtualAddress: _UInt32
+    Misc_VirtualSize: _UInt32
+    SizeOfRawData: _UInt32
+    PointerToRawData: _UInt32
+    PointerToRelocations: _UInt32
+    PointerToLinenumbers: _UInt32
+    NumberOfRelocations: _UInt16
+    NumberOfLinenumbers: _UInt16
+    Characteristics: _UInt32
+    Name: _char[8]
+
+    PointerToRawData_adj: int | None
+    VirtualAddress_adj: int | None
+    section_min_addr: int | None
+    section_max_addr: int | None
+
+    next_section_virtual_address: int | None
 
     def __init__(self, *argl: Any, **argd: Any) -> None: ...
     def get_PointerToRawData_adj(self) -> int: ...
@@ -200,7 +257,7 @@ class SectionStructure(Structure):
 
 @lru_cache(maxsize=2048, copy=False)
 def set_bitfields_format(
-    format,
+    format: _STRUCTURE_FORMAT,
 ) -> tuple[
     str,
     int,
@@ -226,40 +283,575 @@ class StructureWithBitfields(Structure):
     def dump(self, indentation: int = ...) -> list[str]: ...
     def dump_dict(self) -> dict[str, str | _Structure_Dict_Value]: ...
 
+class _DOS_Header(Structure):
+    name: Literal["IMAGE_DOS_HEADER"]
+    e_magic: _char[2]  # H
+    e_cblp: _UInt16
+    e_cp: _UInt16
+    e_crlc: _UInt16
+    e_parhdr: _UInt16
+    e_minalloc: _UInt16
+    e_maxalloc: _UInt16
+    e_ss: _UInt16
+    e_sp: _UInt16
+    e_csum: _UInt16
+    e_ip: _UInt16
+    e_cs: _UInt16
+    e_lfarlc: _UInt16
+    e_ovno: _UInt16
+    e_res: _char[8]  # 8s
+    e_oemid: _UInt16
+    e_oeminfo: _UInt16
+    e_res2: _char[20]  # 20s
+    e_lfanew: _Int32
+
+class _File_Header(Structure):
+    name: Literal["IMAGE_FILE_HEADER"]
+    Machine: _UInt16
+    NumberOfSections: _UInt16
+    TimeDateStamp: _UInt32
+    PointerToSymbolTable: _UInt32
+    NumberOfSymbols: _UInt32
+    SizeOfOptionalHeader: _UInt16
+    Characteristics: _UInt16
+
+class _Data_Directory(Structure):
+    name: Literal["IMAGE_DATA_DIRECTORY"]
+    VirtualAddress: _UInt32
+    Size: _UInt32
+
+_MAGIC_TYPE = _UInt16
+
+class _Optional_Header_Base(Structure, Generic[_Ptr]):
+    Magic: _MAGIC_TYPE
+    MajorLinkerVersion: _byte
+    MinorLinkerVersion: _byte
+    SizeOfCode: _UInt32
+    SizeOfInitializedData: _UInt32
+    SizeOfUninitializedData: _UInt32
+    AddressOfEntryPoint: _UInt32
+    BaseOfCode: _UInt32
+    ImageBase: _Ptr
+    SectionAlignment: _UInt32
+    FileAlignment: _UInt32
+    MajorOperatingSystemVersion: _UInt16
+    MinorOperatingSystemVersion: _UInt16
+    MajorImageVersion: _UInt16
+    MinorImageVersion: _UInt16
+    MajorSubsystemVersion: _UInt16
+    MinorSubsystemVersion: _UInt16
+    Win32VersionValue: _UInt32
+    SizeOfImage: _UInt32
+    SizeOfHeaders: _UInt32
+    CheckSum: _UInt32
+    Subsystem: int
+    DllCharacteristics: int
+    SizeOfStackReserve: _Ptr
+    SizeOfStackCommit: _Ptr
+    SizeOfHeapReserve: _Ptr
+    SizeOfHeapCommit: _Ptr
+    LoaderFlags: _UInt32
+    NumberOfRvaAndSizes: _UInt32
+    # DataDirectory: list[int]
+    DATA_DIRECTORY: list[_Data_Directory]
+
+class _Optional_Header32(_Optional_Header_Base[_UInt32]):
+    name: Literal["IMAGE_OPTIONAL_HEADER32"]
+    BaseOfData: _UInt32
+
+class _Optional_Header64(_Optional_Header_Base[_UInt64]):
+    name: Literal["IMAGE_OPTIONAL_HEADER64"]
+
+_Optional_Header = _Optional_Header32 | _Optional_Header64
+
+class _NT_Headers(Structure):
+    name: Literal["IMAGE_NT_HEADERS"]
+    Signature: _UInt32
+    # FileHeader: _File_Header
+    FILE_HEADER: _File_Header
+    # OptionalHeader: _Optional_Header
+    OPTIONAL_HEADER: _Optional_Header32 | _Optional_Header64
+
+# IMAGE_SECTION_HEADER is implemented as SectionStructure
+
+class _Delay_Import_Descriptor(Structure):
+    name: Literal["IMAGE_DELAY_IMPORT_DESCRIPTOR"]
+    grAttrs: _UInt32
+    szName: _UInt32
+    phmod: _UInt32
+    pIAT: _UInt32
+    pINT: _UInt32
+    pBoundIAT: _UInt32
+    pUnloadIAT: _UInt32
+    dwTimeStamp: _UInt32
+
+class _Import_Descriptor(Structure):
+    name: Literal["IMAGE_IMPORT_DESCRIPTOR"]
+    OriginalFirstThunk: _UInt32
+    Characteristics: _UInt32
+    TimeDateStamp: _UInt32
+    ForwarderChain: _UInt32
+    Name: _UInt32
+    FirstThunk: _UInt32
+
+class _Export_Directory(Structure):
+    name: Literal["IMAGE_EXPORT_DIRECTORY"]
+    Characteristics: _UInt32
+    TimeDateStamp: _UInt32
+    MajorVersion: _UInt16
+    MinorVersion: _UInt16
+    Name: _UInt32
+    Base: _UInt32
+    NumberOfFunctions: _UInt32
+    NumberOfNames: _UInt32
+    AddressOfFunctions: _UInt32
+    AddressOfNames: _UInt32
+    AddressOfNameOrdinals: _UInt32
+
+class _Resource_Directory(Structure):
+    name: Literal["IMAGE_RESOURCE_DIRECTORY"]
+    Characteristics: _UInt32
+    TimeDateStamp: _UInt32
+    MajorVersion: _UInt16
+    MinorVersion: _UInt16
+    NumberOfNamedEntries: _UInt16
+    NumberOfIdEntries: _UInt16
+
+class _Resource_Directory_Entry(Structure):
+    name: Literal["IMAGE_RESOURCE_DIRECTORY_ENTRY"]
+    Name: _UInt32
+    Id: _UInt16
+    NameOffset: _UInt32
+
+    OffsetToData: _UInt32
+    Size: _UInt32
+    CodePage: _UInt32
+    Reserved: _UInt32
+
+    DataIsDirectory: _UInt32
+    OffsetToDirectory: _UInt32
+
+    __pad: _UInt32
+
+class _Resource_Data_Entry(Structure):
+    name: Literal["IMAGE_RESOURCE_DATA_ENTRY"]
+    OffsetToData: _UInt32
+    Size: _UInt32
+    CodePage: _UInt32
+    Reserved: _UInt32
+
+class _VersionStructure(Structure):
+    Length: _UInt16
+    ValueLength: _UInt16
+    Type: _UInt16
+    Key: bytes
+
+class _VersionInfo(_VersionStructure):
+    name: Literal["VS_VERSIONINFO"]
+
+class _FixedFileInfo(Structure):
+    name: Literal["VS_FIXEDFILEINFO"]
+    Signature: _UInt32
+    StrucVersion: _UInt32
+    FileVersionMS: _UInt32
+    FileVersionLS: _UInt32
+    ProductVersionMS: _UInt32
+    ProductVersionLS: _UInt32
+    FileFlagsMask: _UInt32
+    FileFlags: _UInt32
+    FileOS: _UInt32
+    FileType: _UInt32
+    FileSubtype: _UInt32
+    FileDateMS: _UInt32
+    FileDateLS: _UInt32
+
+class _StringFileInfo(_VersionStructure):
+    name: Literal["StringFileInfo"]
+    StringTable: list["_StringTable"]
+    Var: list["_Var"]
+
+class _StringTable(_VersionStructure):
+    name: Literal["StringTable"]
+
+    entries: dict[bytes, bytes]
+    entries_offsets: dict[bytes, tuple[_UInt32, _UInt32]]
+    entries_lengths: dict[bytes, tuple[int, int]]
+    LangID: bytes
+    Length: int
+
+class _String(_VersionStructure):
+    name: Literal["String"]
+
+class _VarFileInfo(_VersionStructure):
+    name: Literal["VarFileInfo"]
+    Var: list["_Var"]  # "Children"
+
+class _Var(_VersionStructure):
+    name: Literal["Var"]
+    entry: dict[bytes, str]  # "Value"
+
+class _Thunk_Data_Base(Structure, Generic[_Ptr]):
+    name: Literal["IMAGE_THUNK_DATA"]
+    # Union
+    ForwarderString: _Ptr
+    Function: _Ptr
+    Ordinal: _Ptr
+    AddressOfData: _Ptr
+    # /Union
+
+class _Thunk_Data32(_Thunk_Data_Base[_UInt32]):
+    pass
+
+class _Thunk_Data64(_Thunk_Data_Base[_UInt64]):
+    pass
+
+_Thunk_Data = _Thunk_Data32 | _Thunk_Data64
+
+class _Debug_Directory(Structure):
+    name: Literal["IMAGE_DEBUG_DIRECTORY"]
+    Characteristics: _UInt32
+    TimeDateStamp: _UInt32
+    MajorVersion: _UInt16
+    MinorVersion: _UInt16
+    Type: _UInt32
+    SizeOfData: _UInt32
+    AddressOfRawData: _UInt32
+    PointerToRawData: _UInt32
+
+class _Base_Relocation(Structure):
+    name: Literal["IMAGE_BASE_RELOCATION"]
+    VirtualAddress: _UInt32
+    SizeOfBlock: _UInt32
+
+class _Base_Relocation_Entry(Structure):
+    name: Literal["IMAGE_BASE_RELOCATION_ENTRY"]
+    Data: _UInt16
+
+class _Dynamic_Relocation_Bitfield(StructureWithBitfields):
+    PageRelativeOffset: int  # I:12
+
+class _Import_Control_Transfer_Dynamic_Relocation(_Dynamic_Relocation_Bitfield):
+    name: Literal["IMAGE_IMPORT_CONTROL_TRANSFER_DYNAMIC_RELOCATION"]
+    PageRelativeOffset: int  # I:12
+    IndirectCall: int  # I:1
+    IATIndex: int  # I:19
+
+class _Indir_Control_Transfer_Dynamic_Relocation(_Dynamic_Relocation_Bitfield):
+    name: Literal["IMAGE_INDIR_CONTROL_TRANSFER_DYNAMIC_RELOCATION"]
+    PageRelativeOffset: int  # H:12
+    IndirectCall: int  # H:1
+    RexWPrefix: int  # H:1
+    CfgCheck: int  # H:1
+    Reserved: int  # H:1
+
+class _Switchtable_Branch_Dynamic_Relocation(_Dynamic_Relocation_Bitfield):
+    name: Literal["IMAGE_SWITCHTABLE_BRANCH_DYNAMIC_RELOCATION"]
+    PageRelativeOffset: int  # H:12
+    RegisterNumber: int  # H:4
+
+class _Function_Override_Header(Structure):
+    name: Literal["IMAGE_FUNCTION_OVERRIDE_HEADER"]
+    FuncOverrideSize: _UInt32
+
+class _Function_Override_Dynamic_Relocation(Structure):
+    name: Literal["IMAGE_FUNCTION_OVERRIDE_DYNAMIC_RELOCATION"]
+    OriginalRva: _UInt32
+    BDDOffset: _UInt32
+    RvaSize: _UInt32
+    BaseRelocSize: _UInt32
+
+class _BDD_Info(Structure):
+    name: Literal["IMAGE_BDD_INFO"]
+    Version: _UInt32
+    BDDSize: _UInt32
+
+class _BDD_Dynamic_Relocation(Structure):
+    name: Literal["IMAGE_BDD_DYNAMIC_RELOCATION"]
+    Left: _UInt16
+    Right: _UInt16
+    Value: _UInt32
+
+class _TLS_Directory_Base(Structure, Generic[_Ptr]):
+    name: Literal["IMAGE_TLS_DIRECTORY"]
+    SizeOfZeroFill: _UInt32
+    Characteristics: _UInt32
+    StartAddressOfRawData: _Ptr
+    EndAddressOfRawData: _Ptr
+    AddressOfIndex: _Ptr
+    AddressOfCallBacks: _Ptr
+
+class _TLS_Directory32(_TLS_Directory_Base[_UInt32]):
+    pass
+
+class _TLS_Directory64(_TLS_Directory_Base[_UInt64]):
+    pass
+
+_TLS_Directory = _TLS_Directory32 | _TLS_Directory64
+
+class _Load_Config_Directory_Base(Structure, Generic[_Ptr]):
+    name: Literal["IMAGE_LOAD_CONFIG_DIRECTORY"]
+    Size: _UInt32
+    TimeDateStamp: _UInt32
+    MajorVersion: _UInt16
+    MinorVersion: _UInt16
+    GlobalFlagsClear: _UInt32
+    GlobalFlagsSet: _UInt32
+    CriticalSectionDefaultTimeout: _UInt32
+    DeCommitFreeBlockThreshold: _Ptr
+    DeCommitTotalFreeThreshold: _Ptr
+    LockPrefixTable: _Ptr
+    MaximumAllocationSize: _Ptr
+    VirtualMemoryThreshold: _Ptr
+    ProcessHeapFlags: _UInt32
+    ProcessAffinityMask: _Ptr
+    CSDVersion: _UInt16
+    DependentLoadFlags: _UInt16
+    EditList: _Ptr
+    SecurityCookie: _Ptr
+    SEHandlerTable: _Ptr
+    SEHandlerCount: _Ptr
+    GuardCFCheckFunctionPointer: _Ptr
+    GuardCFDispatchFunctionPointer: _Ptr
+    GuardCFFunctionTable: _Ptr
+    GuardCFFunctionCount: _Ptr
+    GuardFlags: _UInt32
+    CodeIntegrityFlags: _UInt16
+    CodeIntegrityCatalog: _UInt16
+    CodeIntegrityCatalogOffset: _UInt32
+    CodeIntegrityReserved: _UInt32
+    GuardAddressTakenIatEntryTable: _Ptr
+    GuardAddressTakenIatEntryCount: _Ptr
+    GuardLongJumpTargetTable: _Ptr
+    GuardLongJumpTargetCount: _Ptr
+    DynamicValueRelocTable: _Ptr
+    CHPEMetadataPointer: _Ptr
+    GuardRFFailureRoutine: _Ptr
+    GuardRFFailureRoutineFunctionPointer: _Ptr
+    DynamicValueRelocTableOffset: _UInt32
+    DynamicValueRelocTableSection: _UInt16
+    Reserved2: _UInt16
+    GuardRFVerifyStackPointerFunctionPointer: _Ptr
+    HotPatchTableOffset: _UInt32
+    Reserved3: _UInt32
+    EnclaveConfigurationPointer: _Ptr
+    VolatileMetadataPointer: _Ptr
+    GuardEHContinuationTable: _Ptr
+    GuardEHContinuationCount: _Ptr
+    GuardXFGCheckFunctionPointer: _Ptr
+    GuardXFGDispatchFunctionPointer: _Ptr
+    GuardXFGTableDispatchFunctionPointer: _Ptr
+    CastGuardOsDeterminedFailureMode: _Ptr
+    GuardMemcpyFunctionPointer: _Ptr
+
+class _Load_Config_Directory32(_Load_Config_Directory_Base[_UInt32]):
+    pass
+
+class _Load_Config_Directory64(_Load_Config_Directory_Base[_UInt64]):
+    pass
+
+_Load_Config_Directory = _Load_Config_Directory32 | _Load_Config_Directory64
+
+class _Dynamic_Relocation_Table(Structure):
+    name: Literal["IMAGE_DYNAMIC_RELOCATION_TABLE"]
+    Version: _UInt32
+    Size: _UInt32
+
+class _Dynamic_Relocation_Base(Structure, Generic[_Ptr]):
+    Symbol: _Ptr
+    BaseRelocSize: _UInt32
+
+class _Dynamic_Relocation32(_Dynamic_Relocation_Base[_UInt32]):
+    name: Literal["IMAGE_DYNAMIC_RELOCATION"]
+
+class _Dynamic_Relocation64(_Dynamic_Relocation_Base[_UInt64]):
+    name: Literal["IMAGE_DYNAMIC_RELOCATION64"]
+
+_Dynamic_Relocation = _Dynamic_Relocation32 | _Dynamic_Relocation64
+
+class _Dynamic_Relocation_V2_Base(Structure, Generic[_Ptr]):
+    HeaderSize: _UInt32
+    FixupInfoSize: _UInt32
+    Symbol: _Ptr
+    SymbolGroup: _UInt32
+    Flags: _UInt32
+
+class _Dynamic_Relocation32_V2(_Dynamic_Relocation_V2_Base[_UInt32]):
+    name: Literal["IMAGE_DYNAMIC_RELOCATION_V2"]
+
+class _Dynamic_Relocation64_V2(_Dynamic_Relocation_V2_Base[_UInt64]):
+    name: Literal["IMAGE_DYNAMIC_RELOCATION64_V2"]
+
+_Dynamic_Relocation_V2 = _Dynamic_Relocation32_V2 | _Dynamic_Relocation64_V2
+
+class _Bound_Import_Descriptor(Structure):
+    name: Literal["IMAGE_BOUND_IMPORT_DESCRIPTOR"]
+    TimeDateStamp: _UInt32
+    OffsetModuleName: _UInt16
+    NumberOfModuleForwarderRefs: _UInt16
+
+class _Bound_Forwarder_Ref(Structure):
+    name: Literal["IMAGE_BOUND_FORWARDER_REF"]
+    TimeDateStamp: _UInt32
+    OffsetModuleName: _UInt16
+    Reserved: _UInt16
+
+class _Runtime_Function(Structure):
+    name: Literal["RUNTIME_FUNCTION"]
+    BeginAddress: _UInt32
+    EndAddress: _UInt32
+    UnwindData: _UInt32
+    UnwindInfoAddress: _UInt32
+
+# Debug Types
+class _Debug_Type(Structure):
+    pass
+
+class _Debug_Misc(_Debug_Type):
+    name: Literal["IMAGE_DEBUG_MISC"]
+    DataType: _UInt32
+    Length: _UInt32
+    Unicode: _char
+    Reserved1: _char
+    Reserved2: _UInt16
+
+class _CV_Info_PDB20(_Debug_Type):
+    name: Literal["CV_INFO_PDB20"]
+    CvHeaderSignature: _UInt32
+    CvHeaderOffset: _UInt32
+    Signature: _UInt32
+    Age: _UInt32
+
+class _CV_Info_PDB70(_Debug_Type):
+    name: Literal["CV_INFO_PDB70"]
+    CvSignature: _char[4]
+    Signature_Data1: _UInt32  # Signature is of GUID type
+    Signature_Data2: _UInt16
+    Signature_Data3: _UInt16
+    Signature_Data4: _char
+    Signature_Data5: _char
+    Signature_Data6: _char[6]
+    Signature_Data6_value: bytes
+    Age: _UInt32
+    PdbFileName: _char[int]  # (Debug_Directory.SizeOfData - sizeof(CV_INFO_PDB70))
+    Signature_String: str
+
+# Misc
+class _RichHeader:
+    checksum: bytes
+    values: bytes
+    key: bytes
+    raw_data: bytes
+    clear_data: bytes
+
 class DataContainer:
+    name: bytes | None
     def __init__(self, **args: Any) -> None: ...
 
+class _DataContainer_Struct(DataContainer, Generic[_T]):
+    struct: _T
+    def __init(self, struct: _T, **args) -> None: ...
 
-class ImportDescData(DataContainer): ...
+class ImportDescData(
+    _DataContainer_Struct[_Import_Descriptor | _Delay_Import_Descriptor]
+):
+    dll: bytes
+    imports: list["ImportData"]
 
 class ImportData(DataContainer):
+    pe: PE
+    struct_table: _Thunk_Data
+    struct_iat: _Thunk_Data | None
+    import_by_ordinal: bool
+    ordinal: bytes | None
+    ordinal_offset: int
+    hint: _UInt16
+    name_offset: int
+    bound: _UInt32 | _UInt64
+    address: _UInt32 | _UInt64
+    hint_name_table_rva: _UInt32 | _UInt64
+    thunk_offset: int
+    thunk_rva: int
     def __setattr__(self, name: str, val: Any) -> None: ...
 
-class ExportDirData(DataContainer): ...
+class ExportDirData(_DataContainer_Struct[_Export_Directory]): ...
 
 class ExportData(DataContainer):
+    pe: PE
+    ordinal: int
+    ordinal_offset: int
+    address: int
+    address_offset: int
+    name: bytes
+    name_offset: int
+    forwarder: bytes
+    forwarder_offset: int
     def __setattr__(self, name: str, val: Any) -> None: ...
 
-class ResourceDirData(DataContainer): ...
-class ResourceDirEntryData(DataContainer): ...
-class ResourceDataEntryData(DataContainer): ...
-class DebugData(DataContainer): ...
-class DynamicRelocationData(DataContainer): ...
-class FunctionOverrideData(DataContainer): ...
-class FunctionOverrideDynamicRelocationData(DataContainer): ...
-class BddDynamicRelocationData(DataContainer): ...
-class BaseRelocationData(DataContainer): ...
+class ResourceDirData(_DataContainer_Struct[_Resource_Directory]):
+    entries: list[ResourceDirEntryData]
+    strings: dict[int, str]
 
-class RelocationData(DataContainer):
+class ResourceDirEntryData(_DataContainer_Struct[_Resource_Directory_Entry]):
+    id: _UInt16
+    directory: ResourceDirData
+    data: ResourceDataEntryData
+
+class ResourceDataEntryData(_DataContainer_Struct[_Resource_Data_Entry]):
+    lang: int
+    sublang: int
+
+class DebugData(_DataContainer_Struct[_Debug_Directory]):
+    entry: _Debug_Type
+
+class DynamicRelocationData(_DataContainer_Struct[_Dynamic_Relocation]):
+    relocations: list[BaseRelocationData]
+
+class FunctionOverrideData(_DataContainer_Struct[_Dynamic_Relocation]):
+    bdd_relocs: list[BddDynamicRelocationData]
+    func_relocs: list[FunctionOverrideDynamicRelocationData]
+
+class FunctionOverrideDynamicRelocationData(
+    _DataContainer_Struct[_Function_Override_Dynamic_Relocation]
+):
+    relocations: list[BaseRelocationData]
+
+class BddDynamicRelocationData(_DataContainer_Struct[_BDD_Dynamic_Relocation]): ...
+
+class BaseRelocationData(_DataContainer_Struct[_Base_Relocation]):
+    entries: list[RelocationData]
+
+class RelocationData(
+    _DataContainer_Struct[_Base_Relocation_Entry | _Dynamic_Relocation_Bitfield]
+):
+    type: int
+    rva: int
+    base_rva: int
     def __setattr__(self, name: str, val: Any) -> None: ...
 
-class TlsData(DataContainer): ...
-class BoundImportDescData(DataContainer): ...
-class LoadConfigData(DataContainer): ...
-class BoundImportRefData(DataContainer): ...
-class ExceptionsDirEntryData(DataContainer): ...
+class TlsData(_DataContainer_Struct[_TLS_Directory]): ...
+
+class BoundImportDescData(_DataContainer_Struct[_Bound_Import_Descriptor]):
+    entries: list[BoundImportRefData]
+
+class LoadConfigData(_DataContainer_Struct[_Load_Config_Directory]):
+    dynamic_relocations: list[DynamicRelocationData]
+
+class BoundImportRefData(_DataContainer_Struct[_Bound_Forwarder_Ref]): ...
+
+class ExceptionsDirEntryData(_DataContainer_Struct[_Runtime_Function]):
+    unwindinfo: UnwindInfo
 
 class UnwindInfo(StructureWithBitfields):
+    Version: _char[3]
+    Flags: _char[5]
+    SizeOfProlog: _char
+    CountOfCodes: int
+    FrameRegister: _char[4]
+    FrameOffset: _char[4]
+
+    UNW_FLAG_EHANDLER: Literal[0, 0x01]
+    UNW_FLAG_UHANDLER: Literal[0, 0x02]
+    UNW_FLAG_CHAININFO: Literal[0, 0x04]
     def __init__(self, file_offset: int = ...) -> None: ...
     def unpack_in_stages(self, data: _DATA_TYPE) -> str | None: ...
     def dump(self, indentation: int = ...) -> list[str]: ...
@@ -270,7 +862,64 @@ class UnwindInfo(StructureWithBitfields):
     def get_chained_function_entry(self) -> ExceptionsDirEntryData: ...
     def set_chained_function_entry(self, entry: ExceptionsDirEntryData) -> None: ...
 
-class PrologEpilogOp:
+class _Unwind_Code_Base(UnwindInfo):
+    CodeOffset: _char
+    UnwindOp: _char[4]
+    OpInfo: _char[4]
+
+class _Unwind_Code(_Unwind_Code_Base):
+    name: Literal["UNWIND_CODE"]
+
+_Unwind_Code_Type = TypeVar("_Unwind_Code_Type", bound=_Unwind_Code_Base)
+
+class _Unwind_Code_Push_NonVol(_Unwind_Code_Base):
+    name: Literal["UNWIND_CODE_PUSH_NONVOL"]
+    Reg: int
+
+class _Unwind_Code_Alloc_Large(_Unwind_Code_Base):
+    name: Literal["UNWIND_CODE_ALLOC_LARGE"]
+    AllocSizeInQwords: _UInt16
+    AllocSize: _UInt32
+
+class _Unwind_Code_Alloc_Small(_Unwind_Code_Base):
+    name: Literal["UNWIND_CODE_ALLOC_SMALL"]
+    AllocSizeInQwordsMinus8: int
+
+_Unwind_Code_Set_Fp = _Unwind_Code
+
+class _Unwind_Code_Save_Reg(_Unwind_Code_Base):
+    name: Literal["UNWIND_CODE_SAVE_NONVOL"]
+    Reg: int
+    OffsetInQwords: _UInt16
+
+class _Unwind_Code_Save_Reg_Far(_Unwind_Code_Base):
+    name: Literal["UNWIND_CODE_SAVE_NONVOL_FAR"]
+    Reg: int
+    Offset: _UInt32
+
+class _Unwind_Code_Save_XMM(_Unwind_Code_Base):
+    name: Literal["UNWIND_CODE_SAVE_XMM128"]
+    Reg: _char[4]
+    OffsetIn2Qwords: _UInt16
+
+class _Unwind_Code_Save_XMM_Far(_Unwind_Code_Base):
+    name: Literal["UNWIND_CODE_SAVE_XMM128_FAR"]
+    Reg: int
+    Offset: "_UInt32"
+
+_Unwind_Code_Push_Frame = _Unwind_Code
+
+class _Unwind_Code_Epilog_Marker(_Unwind_Code_Base):
+    name: Literal["UNWIND_CODE_EPILOG"]
+    Size: _char
+    UnwindOp: _char[4]
+    Flags: _char[4]
+    OffsetLow: _char
+    Unused: _char[4]
+    OffsetHigh: _char[4]
+
+class PrologEpilogOp(ABC, Generic[_Unwind_Code_Type]):
+    struct: _Unwind_Code_Type
     def initialize(
         self,
         unw_code: StructureWithBitfields,
@@ -283,21 +932,21 @@ class PrologEpilogOp:
     ) -> int: ...
     def is_valid(self) -> bool: ...
 
-class PrologEpilogOpPushReg(PrologEpilogOp):
+class PrologEpilogOpPushReg(PrologEpilogOp[_Unwind_Code_Push_NonVol]):
     def __str__(self) -> str: ...
 
-class PrologEpilogOpAllocLarge(PrologEpilogOp):
+class PrologEpilogOpAllocLarge(PrologEpilogOp[_Unwind_Code_Alloc_Large]):
     def length_in_code_structures(
         self, unw_code: StructureWithBitfields, unw_info: UnwindInfo
     ) -> int: ...
     def get_alloc_size(self) -> int: ...
     def __str__(self) -> str: ...
 
-class PrologEpilogOpAllocSmall(PrologEpilogOp):
+class PrologEpilogOpAllocSmall(PrologEpilogOp[_Unwind_Code_Alloc_Small]):
     def get_alloc_size(self) -> int: ...
     def __str__(self) -> str: ...
 
-class PrologEpilogOpSetFP(PrologEpilogOp):
+class PrologEpilogOpSetFP(PrologEpilogOp[_Unwind_Code_Set_Fp]):
     def initialize(
         self,
         unw_code: StructureWithBitfields,
@@ -307,38 +956,38 @@ class PrologEpilogOpSetFP(PrologEpilogOp):
     ) -> None: ...
     def __str__(self) -> str: ...
 
-class PrologEpilogOpSaveReg(PrologEpilogOp):
+class PrologEpilogOpSaveReg(PrologEpilogOp[_Unwind_Code_Save_Reg]):
     def length_in_code_structures(
         self, unwcode: StructureWithBitfields, unw_info: UnwindInfo
     ) -> int: ...
     def get_offset(self) -> int: ...
     def __str__(self) -> str: ...
 
-class PrologEpilogOpSaveRegFar(PrologEpilogOp):
+class PrologEpilogOpSaveRegFar(PrologEpilogOp[_Unwind_Code_Save_Reg_Far]):
     def length_in_code_structures(
         self, unw_code: StructureWithBitfields, unw_info: UnwindInfo
     ) -> int: ...
     def get_offset(self) -> int: ...
     def __str__(self) -> str: ...
 
-class PrologEpilogOpSaveXMM(PrologEpilogOp):
+class PrologEpilogOpSaveXMM(PrologEpilogOp[_Unwind_Code_Save_XMM]):
     def length_in_code_structures(
         self, unw_code: StructureWithBitfields, unw_info: UnwindInfo
     ) -> int: ...
     def get_offset(self) -> int: ...
     def __str__(self) -> str: ...
 
-class PrologEpilogOpSaveXMMFar(PrologEpilogOp):
+class PrologEpilogOpSaveXMMFar(PrologEpilogOp[_Unwind_Code_Save_XMM_Far]):
     def length_in_code_structures(
         self, unw_code: StructureWithBitfields, unw_info: UnwindInfo
     ) -> int: ...
     def get_offset(self) -> int: ...
     def __str__(self) -> str: ...
 
-class PrologEpilogOpPushFrame(PrologEpilogOp):
+class PrologEpilogOpPushFrame(PrologEpilogOp[_Unwind_Code_Push_Frame]):
     def __str__(self) -> str: ...
 
-class PrologEpilogOpEpilogMarker(PrologEpilogOp):
+class PrologEpilogOpEpilogMarker(PrologEpilogOp[_Unwind_Code_Epilog_Marker]):
     def initialize(
         self,
         unw_code: StructureWithBitfields,
@@ -354,9 +1003,9 @@ class PrologEpilogOpEpilogMarker(PrologEpilogOp):
     def __str__(self) -> str: ...
 
 class PrologEpilogOpsFactory:
-    _class_dict: dict[int, type[PrologEpilogOp]] = ...
+    _class_dict: dict[int, type[PrologEpilogOp[Any]]] = ...
     @staticmethod
-    def create(unwcode: StructureWithBitfields) -> PrologEpilogOp: ...
+    def create(unwcode: StructureWithBitfields) -> PrologEpilogOp[Any]: ...
 
 allowed_filename: bytes = ...
 
@@ -369,51 +1018,151 @@ def is_valid_function_name(
     s: str | bytes | bytearray, relax_allowed_characters: bool = ...
 ) -> bool: ...
 
-
 class PE(AbstractContextManager["PE"]):
-    __IMAGE_DOS_HEADER_format__: _STRUCTURE_FORMAT = ...
-    __IMAGE_FILE_HEADER_format__: _STRUCTURE_FORMAT = ...
-    __IMAGE_DATA_DIRECTORY_format__: _STRUCTURE_FORMAT = ...
-    __IMAGE_OPTIONAL_HEADER_format__: _STRUCTURE_FORMAT = ...
-    __IMAGE_OPTIONAL_HEADER64_format__: _STRUCTURE_FORMAT = ...
-    __IMAGE_NT_HEADERS_format__: _STRUCTURE_FORMAT = ...
-    __IMAGE_SECTION_HEADER_format__: _STRUCTURE_FORMAT = ...
-    __IMAGE_DELAY_IMPORT_DESCRIPTOR_format__: _STRUCTURE_FORMAT = ...
-    __IMAGE_IMPORT_DESCRIPTOR_format__: _STRUCTURE_FORMAT = ...
-    __IMAGE_EXPORT_DIRECTORY_format__: _STRUCTURE_FORMAT = ...
-    __IMAGE_RESOURCE_DIRECTORY_format__: _STRUCTURE_FORMAT = ...
-    __IMAGE_RESOURCE_DIRECTORY_ENTRY_format__: _STRUCTURE_FORMAT = ...
-    __IMAGE_RESOURCE_DATA_ENTRY_format__: _STRUCTURE_FORMAT = ...
-    __VS_VERSIONINFO_format__: _STRUCTURE_FORMAT = ...
-    __VS_FIXEDFILEINFO_format__: _STRUCTURE_FORMAT = ...
-    __StringFileInfo_format__: _STRUCTURE_FORMAT = ...
-    __StringTable_format__: _STRUCTURE_FORMAT = ...
-    __String_format__: _STRUCTURE_FORMAT = ...
-    __Var_format__: _STRUCTURE_FORMAT = ...
-    __IMAGE_THUNK_DATA_format__: _STRUCTURE_FORMAT = ...
-    __IMAGE_THUNK_DATA64_format__: _STRUCTURE_FORMAT = ...
-    __IMAGE_DEBUG_DIRECTORY_format__: _STRUCTURE_FORMAT = ...
-    __IMAGE_BASE_RELOCATION_format__: _STRUCTURE_FORMAT = ...
-    __IMAGE_BASE_RELOCATION_ENTRY_format__: _STRUCTURE_FORMAT = ...
-    __IMAGE_IMPORT_CONTROL_TRANSFER_DYNAMIC_RELOCATION_format__: _STRUCTURE_FORMAT = ...
-    __IMAGE_INDIR_CONTROL_TRANSFER_DYNAMIC_RELOCATION_format__: _STRUCTURE_FORMAT = ...
-    __IMAGE_SWITCHTABLE_BRANCH_DYNAMIC_RELOCATION_format__: _STRUCTURE_FORMAT = ...
-    __IMAGE_FUNCTION_OVERRIDE_HEADER_format__: _STRUCTURE_FORMAT = ...
-    __IMAGE_FUNCTION_OVERRIDE_DYNAMIC_RELOCATION_format__: _STRUCTURE_FORMAT = ...
-    __IMAGE_BDD_INFO_format__: _STRUCTURE_FORMAT = ...
-    __IMAGE_BDD_DYNAMIC_RELOCATION_format__: _STRUCTURE_FORMAT = ...
-    __IMAGE_TLS_DIRECTORY_format__: _STRUCTURE_FORMAT = ...
-    __IMAGE_TLS_DIRECTORY64_format__: _STRUCTURE_FORMAT = ...
-    __IMAGE_LOAD_CONFIG_DIRECTORY_format__: _STRUCTURE_FORMAT = ...
-    __IMAGE_LOAD_CONFIG_DIRECTORY64_format__: _STRUCTURE_FORMAT = ...
-    __IMAGE_DYNAMIC_RELOCATION_TABLE_format__: _STRUCTURE_FORMAT = ...
-    __IMAGE_DYNAMIC_RELOCATION_format__: _STRUCTURE_FORMAT = ...
-    __IMAGE_DYNAMIC_RELOCATION64_format__: _STRUCTURE_FORMAT = ...
-    __IMAGE_DYNAMIC_RELOCATION_V2_format__: _STRUCTURE_FORMAT = ...
-    __IMAGE_DYNAMIC_RELOCATION64_V2_format__: _STRUCTURE_FORMAT = ...
-    __IMAGE_BOUND_IMPORT_DESCRIPTOR_format__: _STRUCTURE_FORMAT = ...
-    __IMAGE_BOUND_FORWARDER_REF_format__: _STRUCTURE_FORMAT = ...
-    __RUNTIME_FUNCTION_format__: _STRUCTURE_FORMAT = ...
+    __IMAGE_DOS_HEADER_format__: _NAMED_STRUCTURE_FORMAT[
+        Literal["IMAGE_DOS_HEADER"]
+    ] = ...
+    __IMAGE_FILE_HEADER_format__: _NAMED_STRUCTURE_FORMAT[
+        Literal["IMAGE_FILE_HEADER"]
+    ] = ...
+    __IMAGE_DATA_DIRECTORY_format__: _NAMED_STRUCTURE_FORMAT[
+        Literal["IMAGE_DATA_DIRECTORY"]
+    ] = ...
+    __IMAGE_OPTIONAL_HEADER_format__: _NAMED_STRUCTURE_FORMAT[
+        Literal["IMAGE_OPTIONAL_HEADER"]
+    ] = ...
+    __IMAGE_OPTIONAL_HEADER64_format__: _NAMED_STRUCTURE_FORMAT[
+        Literal["IMAGE_OPTIONAL_HEADER64"]
+    ] = ...
+    __IMAGE_NT_HEADERS_format__: _NAMED_STRUCTURE_FORMAT[
+        Literal["IMAGE_NT_HEADERS"]
+    ] = ...
+    __IMAGE_SECTION_HEADER_format__: _NAMED_STRUCTURE_FORMAT[
+        Literal["IMAGE_SECTION_HEADER"]
+    ] = ...
+    __IMAGE_DELAY_IMPORT_DESCRIPTOR_format__: _NAMED_STRUCTURE_FORMAT[
+        Literal["IMAGE_DELAY_IMPORT_DESCRIPTOR"]
+    ] = ...
+    __IMAGE_IMPORT_DESCRIPTOR_format__: _NAMED_STRUCTURE_FORMAT[
+        Literal["IMAGE_IMPORT_DESCRIPTOR"]
+    ] = ...
+    __IMAGE_EXPORT_DIRECTORY_format__: _NAMED_STRUCTURE_FORMAT[
+        Literal["IMAGE_EXPORT_DIRECTORY"]
+    ] = ...
+    __IMAGE_RESOURCE_DIRECTORY_format__: _NAMED_STRUCTURE_FORMAT[
+        Literal["IMAGE_RESOURCE_DIRECTORY"]
+    ] = ...
+    __IMAGE_RESOURCE_DIRECTORY_ENTRY_format__: _NAMED_STRUCTURE_FORMAT[
+        Literal["IMAGE_RESOURCE_DIRECTORY_ENTRY"]
+    ] = ...
+    __IMAGE_RESOURCE_DATA_ENTRY_format__: _NAMED_STRUCTURE_FORMAT[
+        Literal["IMAGE_RESOURCE_DATA_ENTRY"]
+    ] = ...
+    __VS_VERSIONINFO_format__: _NAMED_STRUCTURE_FORMAT[Literal["VS_VERSIONINFO"]] = ...
+    __VS_FIXEDFILEINFO_format__: _NAMED_STRUCTURE_FORMAT[
+        Literal["VS_FIXEDFILEINFO"]
+    ] = ...
+    __StringFileInfo_format__: _NAMED_STRUCTURE_FORMAT[Literal["StringFileInfo"]] = ...
+    __StringTable_format__: _NAMED_STRUCTURE_FORMAT[Literal["StringTable"]] = ...
+    __String_format__: _NAMED_STRUCTURE_FORMAT[Literal["String"]] = ...
+    __Var_format__: _NAMED_STRUCTURE_FORMAT[Literal["Var"]] = ...
+    __IMAGE_THUNK_DATA_format__: _NAMED_STRUCTURE_FORMAT[
+        Literal["IMAGE_THUNK_DATA"]
+    ] = ...
+    __IMAGE_THUNK_DATA64_format__: _NAMED_STRUCTURE_FORMAT[
+        Literal["IMAGE_THUNK_DATA64"]
+    ] = ...
+    __IMAGE_DEBUG_DIRECTORY_format__: _NAMED_STRUCTURE_FORMAT[
+        Literal["IMAGE_DEBUG_DIRECTORY"]
+    ] = ...
+    __IMAGE_BASE_RELOCATION_format__: _NAMED_STRUCTURE_FORMAT[
+        Literal["IMAGE_BASE_RELOCATION"]
+    ] = ...
+    __IMAGE_BASE_RELOCATION_ENTRY_format__: _NAMED_STRUCTURE_FORMAT[
+        Literal["IMAGE_BASE_RELOCATION_ENTRY"]
+    ] = ...
+    __IMAGE_IMPORT_CONTROL_TRANSFER_DYNAMIC_RELOCATION_format__: _NAMED_STRUCTURE_FORMAT[
+        Literal["IMAGE_IMPORT_CONTROL_TRANSFER_DYNAMIC_RELOCATION"]
+    ] = ...
+    __IMAGE_INDIR_CONTROL_TRANSFER_DYNAMIC_RELOCATION_format__: _NAMED_STRUCTURE_FORMAT[
+        Literal["IMAGE_INDIR_CONTROL_TRANSFER_DYNAMIC_RELOCATION"]
+    ] = ...
+    __IMAGE_SWITCHTABLE_BRANCH_DYNAMIC_RELOCATION_format__: _NAMED_STRUCTURE_FORMAT[
+        Literal["IMAGE_SWITCHTABLE_BRANCH_DYNAMIC_RELOCATION"]
+    ] = ...
+    __IMAGE_FUNCTION_OVERRIDE_HEADER_format__: _NAMED_STRUCTURE_FORMAT[
+        Literal["IMAGE_FUNCTION_OVERRIDE_HEADER"]
+    ] = ...
+    __IMAGE_FUNCTION_OVERRIDE_DYNAMIC_RELOCATION_format__: _NAMED_STRUCTURE_FORMAT[
+        Literal["IMAGE_FUNCTION_OVERRIDE_DYNAMIC_RELOCATION"]
+    ] = ...
+    __IMAGE_BDD_INFO_format__: _NAMED_STRUCTURE_FORMAT[Literal["IMAGE_BDD_INFO"]] = ...
+    __IMAGE_BDD_DYNAMIC_RELOCATION_format__: _NAMED_STRUCTURE_FORMAT[
+        Literal["IMAGE_BDD_DYNAMIC_RELOCATION"]
+    ] = ...
+    __IMAGE_TLS_DIRECTORY_format__: _NAMED_STRUCTURE_FORMAT[
+        Literal["IMAGE_TLS_DIRECTORY"]
+    ] = ...
+    __IMAGE_TLS_DIRECTORY64_format__: _NAMED_STRUCTURE_FORMAT[
+        Literal["IMAGE_TLS_DIRECTORY64"]
+    ] = ...
+    __IMAGE_LOAD_CONFIG_DIRECTORY_format__: _NAMED_STRUCTURE_FORMAT[
+        Literal["IMAGE_LOAD_CONFIG_DIRECTORY"]
+    ] = ...
+    __IMAGE_LOAD_CONFIG_DIRECTORY64_format__: _NAMED_STRUCTURE_FORMAT[
+        Literal["IMAGE_LOAD_CONFIG_DIRECTORY64"]
+    ] = ...
+    __IMAGE_DYNAMIC_RELOCATION_TABLE_format__: _NAMED_STRUCTURE_FORMAT[
+        Literal["IMAGE_DYNAMIC_RELOCATION_TABLE"]
+    ] = ...
+    __IMAGE_DYNAMIC_RELOCATION_format__: _NAMED_STRUCTURE_FORMAT[
+        Literal["IMAGE_DYNAMIC_RELOCATION"]
+    ] = ...
+    __IMAGE_DYNAMIC_RELOCATION64_format__: _NAMED_STRUCTURE_FORMAT[
+        Literal["IMAGE_DYNAMIC_RELOCATION64"]
+    ] = ...
+    __IMAGE_DYNAMIC_RELOCATION_V2_format__: _NAMED_STRUCTURE_FORMAT[
+        Literal["IMAGE_DYNAMIC_RELOCATION_V2"]
+    ] = ...
+    __IMAGE_DYNAMIC_RELOCATION64_V2_format__: _NAMED_STRUCTURE_FORMAT[
+        Literal["IMAGE_DYNAMIC_RELOCATION64_V2"]
+    ] = ...
+    __IMAGE_BOUND_IMPORT_DESCRIPTOR_format__: _NAMED_STRUCTURE_FORMAT[
+        Literal["IMAGE_BOUND_IMPORT_DESCRIPTOR"]
+    ] = ...
+    __IMAGE_BOUND_FORWARDER_REF_format__: _NAMED_STRUCTURE_FORMAT[
+        Literal["IMAGE_BOUND_FORWARDER_REF"]
+    ] = ...
+    __RUNTIME_FUNCTION_format__: _NAMED_STRUCTURE_FORMAT[
+        Literal["RUNTIME_FUNCTION"]
+    ] = ...
+
+    DOS_HEADER: _DOS_Header
+    OPTIONAL_HEADER: _Optional_Header
+    NT_HEADERS: _NT_Headers
+    FILE_HEADER: _File_Header
+
+    sections: list[SectionStructure]
+
+    DIRECTORY_ENTRY_IMPORT: list[ImportDescData]
+    DIRECTORY_ENTRY_EXPORT: ExportDirData
+    DIRECTORY_ENTRY_RESOURCE: ResourceDirData
+    DIRECTORY_ENTRY_DEBUG: list[DebugData]
+    DIRECTORY_ENTRY_BASERELOC: list[BaseRelocationData]
+    DIRECTORY_ENTRY_TLS: TlsData
+    DIRECTORY_ENTRY_BOUND_IMPORT: list[BoundImportDescData]
+
+    DIRECTORY_ENTRY_LOAD_CONFIG: LoadConfigData
+    DIRECTORY_ENTRY_EXCEPTION: list[ExceptionsDirEntryData]
+    DIRECTORY_ENTRY_DELAY_IMPORT: list[ImportDescData]
+
+    VS_VERSIONINFO: list[_VersionInfo]
+    VS_FIXEDFILEINFO: list[_FixedFileInfo]
+    FileInfo: list[list[_StringFileInfo]]
+
+    __data__: bytes | mmap.mmap
+    __structures__: list[Structure]
+
     @overload
     def __init__(
         self,
@@ -440,9 +1189,347 @@ class PE(AbstractContextManager["PE"]):
         traceback: TracebackType | None,
     ) -> None: ...
     def close(self) -> None: ...
+    @overload
+    def __unpack_data__(
+        self,
+        format: _NAMED_STRUCTURE_FORMAT[Literal["IMAGE_DOS_HEADER"]],
+        data: _DATA_TYPE,
+        file_offset: int,
+    ) -> _DOS_Header | None: ...
+    @overload
+    def __unpack_data__(
+        self,
+        format: _NAMED_STRUCTURE_FORMAT[Literal["IMAGE_FILE_HEADER"]],
+        data: _DATA_TYPE,
+        file_offset: int,
+    ) -> _File_Header | None: ...
+    @overload
+    def __unpack_data__(
+        self,
+        format: _NAMED_STRUCTURE_FORMAT[Literal["IMAGE_DATA_DIRECTORY"]],
+        data: _DATA_TYPE,
+        file_offset: int,
+    ) -> _Data_Directory | None: ...
+    @overload
+    def __unpack_data__(
+        self,
+        format: _NAMED_STRUCTURE_FORMAT[Literal["IMAGE_OPTIONAL_HEADER"]],
+        data: _DATA_TYPE,
+        file_offset: int,
+    ) -> _Optional_Header32 | None: ...
+    @overload
+    def __unpack_data__(
+        self,
+        format: _NAMED_STRUCTURE_FORMAT[Literal["IMAGE_OPTIONAL_HEADER64"]],
+        data: _DATA_TYPE,
+        file_offset: int,
+    ) -> _Optional_Header64 | None: ...
+    @overload
+    def __unpack_data__(
+        self,
+        format: _NAMED_STRUCTURE_FORMAT[Literal["IMAGE_NT_HEADERS"]],
+        data: _DATA_TYPE,
+        file_offset: int,
+    ) -> _NT_Headers | None: ...
+    @overload
+    def __unpack_data__(
+        self,
+        format: _NAMED_STRUCTURE_FORMAT[Literal["IMAGE_DELAY_IMPORT_DESCRIPTOR"]],
+        data: _DATA_TYPE,
+        file_offset: int,
+    ) -> _Delay_Import_Descriptor | None: ...
+    @overload
+    def __unpack_data__(
+        self,
+        format: _NAMED_STRUCTURE_FORMAT[Literal["IMAGE_IMPORT_DESCRIPTOR"]],
+        data: _DATA_TYPE,
+        file_offset: int,
+    ) -> _Import_Descriptor | None: ...
+    @overload
+    def __unpack_data__(
+        self,
+        format: _NAMED_STRUCTURE_FORMAT[Literal["IMAGE_EXPORT_DIRECTORY"]],
+        data: _DATA_TYPE,
+        file_offset: int,
+    ) -> _Export_Directory | None: ...
+    @overload
+    def __unpack_data__(
+        self,
+        format: _NAMED_STRUCTURE_FORMAT[Literal["IMAGE_RESOURCE_DIRECTORY"]],
+        data: _DATA_TYPE,
+        file_offset: int,
+    ) -> _Resource_Directory | None: ...
+    @overload
+    def __unpack_data__(
+        self,
+        format: _NAMED_STRUCTURE_FORMAT[Literal["IMAGE_RESOURCE_DIRECTORY_ENTRY"]],
+        data: _DATA_TYPE,
+        file_offset: int,
+    ) -> _Resource_Directory_Entry | None: ...
+    @overload
+    def __unpack_data__(
+        self,
+        format: _NAMED_STRUCTURE_FORMAT[Literal["IMAGE_RESOURCE_DATA_ENTRY"]],
+        data: _DATA_TYPE,
+        file_offset: int,
+    ) -> _Resource_Data_Entry | None: ...
+    @overload
+    def __unpack_data__(
+        self,
+        format: _NAMED_STRUCTURE_FORMAT[Literal["VS_VERSIONINFO"]],
+        data: _DATA_TYPE,
+        file_offset: int,
+    ) -> _VersionInfo | None: ...
+    @overload
+    def __unpack_data__(
+        self,
+        format: _NAMED_STRUCTURE_FORMAT[Literal["VS_FIXEDFILEINFO"]],
+        data: _DATA_TYPE,
+        file_offset: int,
+    ) -> _FixedFileInfo | None: ...
+    @overload
+    def __unpack_data__(
+        self,
+        format: _NAMED_STRUCTURE_FORMAT[Literal["StringFileInfo"]],
+        data: _DATA_TYPE,
+        file_offset: int,
+    ) -> _StringFileInfo | None: ...
+    @overload
+    def __unpack_data__(
+        self,
+        format: _NAMED_STRUCTURE_FORMAT[Literal["StringTable"]],
+        data: _DATA_TYPE,
+        file_offset: int,
+    ) -> _StringTable | None: ...
+    @overload
+    def __unpack_data__(
+        self,
+        format: _NAMED_STRUCTURE_FORMAT[Literal["String"]],
+        data: _DATA_TYPE,
+        file_offset: int,
+    ) -> _String | None: ...
+    @overload
+    def __unpack_data__(
+        self,
+        format: _NAMED_STRUCTURE_FORMAT[Literal["VarFileInfo"]],
+        data: _DATA_TYPE,
+        file_offset: int,
+    ) -> _VarFileInfo | None: ...
+    @overload
+    def __unpack_data__(
+        self,
+        format: _NAMED_STRUCTURE_FORMAT[Literal["RUNTIME_FUNCTION"]],
+        data: _DATA_TYPE,
+        file_offset: int,
+    ) -> _Runtime_Function | None: ...
+    @overload
+    def __unpack_data__(
+        self,
+        format: _NAMED_STRUCTURE_FORMAT[Literal["IMAGE_BOUND_FORWARDER_REF"]],
+        data: _DATA_TYPE,
+        file_offset: int,
+    ) -> _Bound_Forwarder_Ref | None: ...
+    @overload
+    def __unpack_data__(
+        self,
+        format: _NAMED_STRUCTURE_FORMAT[Literal["Var"]],
+        data: _DATA_TYPE,
+        file_offset: int,
+    ) -> _Var | None: ...
+    @overload
+    def __unpack_data__(
+        self,
+        format: _NAMED_STRUCTURE_FORMAT[Literal["IMAGE_THUNK_DATA"]],
+        data: _DATA_TYPE,
+        file_offset: int,
+    ) -> _Thunk_Data32 | _Thunk_Data64 | None: ...
+    @overload
+    def __unpack_data__(
+        self,
+        format: _NAMED_STRUCTURE_FORMAT[Literal["IMAGE_DEBUG_DIRECTORY"]],
+        data: _DATA_TYPE,
+        file_offset: int,
+    ) -> _Debug_Directory | None: ...
+    @overload
+    def __unpack_data__(
+        self,
+        format: _NAMED_STRUCTURE_FORMAT[Literal["IMAGE_BASE_RELOCATION"]],
+        data: _DATA_TYPE,
+        file_offset: int,
+    ) -> _Base_Relocation | None: ...
+    @overload
+    def __unpack_data__(
+        self,
+        format: _NAMED_STRUCTURE_FORMAT[Literal["IMAGE_BASE_RELOCATION_ENTRY"]],
+        data: _DATA_TYPE,
+        file_offset: int,
+    ) -> _Base_Relocation_Entry | None: ...
+    @overload
+    def __unpack_data__(
+        self,
+        format: tuple[
+            Literal["IMAGE_IMPORT_CONTROL_TRANSFER_DYNAMIC_RELOCATION"], tuple[str, ...]
+        ],
+        data: _DATA_TYPE,
+        file_offset: int,
+    ) -> _Import_Control_Transfer_Dynamic_Relocation | None: ...
+    @overload
+    def __unpack_data__(
+        self,
+        format: tuple[
+            Literal["IMAGE_INDIR_CONTROL_TRANSFER_DYNAMIC_RELOCATION"], tuple[str, ...]
+        ],
+        data: _DATA_TYPE,
+        file_offset: int,
+    ) -> _Indir_Control_Transfer_Dynamic_Relocation | None: ...
+    @overload
+    def __unpack_data__(
+        self,
+        format: tuple[
+            Literal["IMAGE_SWITCHTABLE_BRANCH_DYNAMIC_RELOCATION"], tuple[str, ...]
+        ],
+        data: _DATA_TYPE,
+        file_offset: int,
+    ) -> _Switchtable_Branch_Dynamic_Relocation | None: ...
+    @overload
+    def __unpack_data__(
+        self,
+        format: _NAMED_STRUCTURE_FORMAT[Literal["IMAGE_FUNCTION_OVERRIDE_HEADER"]],
+        data: _DATA_TYPE,
+        file_offset: int,
+    ) -> _Function_Override_Header | None: ...
+    @overload
+    def __unpack_data__(
+        self,
+        format: tuple[
+            Literal["IMAGE_FUNCTION_OVERRIDE_DYNAMIC_RELOCATION"], tuple[str, ...]
+        ],
+        data: _DATA_TYPE,
+        file_offset: int,
+    ) -> _Function_Override_Dynamic_Relocation | None: ...
+    @overload
+    def __unpack_data__(
+        self,
+        format: _NAMED_STRUCTURE_FORMAT[Literal["IMAGE_BDD_INFO"]],
+        data: _DATA_TYPE,
+        file_offset: int,
+    ) -> _BDD_Info | None: ...
+    @overload
+    def __unpack_data__(
+        self,
+        format: _NAMED_STRUCTURE_FORMAT[Literal["IMAGE_BDD_DYNAMIC_RELOCATION"]],
+        data: _DATA_TYPE,
+        file_offset: int,
+    ) -> _BDD_Dynamic_Relocation | None: ...
+    @overload
+    def __unpack_data__(
+        self,
+        format: _NAMED_STRUCTURE_FORMAT[Literal["IMAGE_LOAD_CONFIG_DIRECTORY"]],
+        data: _DATA_TYPE,
+        file_offset: int,
+    ) -> _Load_Config_Directory32 | _Load_Config_Directory64 | None: ...
+    @overload
+    def __unpack_data__(
+        self,
+        format: _NAMED_STRUCTURE_FORMAT[Literal["IMAGE_DYNAMIC_RELOCATION_TABLE"]],
+        data: _DATA_TYPE,
+        file_offset: int,
+    ) -> _Dynamic_Relocation_Table | None: ...
+    @overload
+    def __unpack_data__(
+        self,
+        format: _NAMED_STRUCTURE_FORMAT[Literal["IMAGE_DYNAMIC_RELOCATION"]],
+        data: _DATA_TYPE,
+        file_offset: int,
+    ) -> _Dynamic_Relocation32 | None: ...
+    @overload
+    def __unpack_data__(
+        self,
+        format: _NAMED_STRUCTURE_FORMAT[Literal["IMAGE_DYNAMIC_RELOCATION64"]],
+        data: _DATA_TYPE,
+        file_offset: int,
+    ) -> _Dynamic_Relocation64 | None: ...
+    @overload
+    def __unpack_data__(
+        self,
+        format: _NAMED_STRUCTURE_FORMAT[Literal["IMAGE_DYNAMIC_RELOCATION_V2"]],
+        data: _DATA_TYPE,
+        file_offset: int,
+    ) -> _Dynamic_Relocation32_V2 | None: ...
+    @overload
+    def __unpack_data__(
+        self,
+        format: _NAMED_STRUCTURE_FORMAT[Literal["IMAGE_DYNAMIC_RELOCATION64_V2"]],
+        data: _DATA_TYPE,
+        file_offset: int,
+    ) -> _Dynamic_Relocation64_V2 | None: ...
+    @overload
+    def __unpack_data__(
+        self,
+        format: _NAMED_STRUCTURE_FORMAT[Literal["IMAGE_TLS_DIRECTORY"]],
+        data: _DATA_TYPE,
+        file_offset: int,
+    ) -> _TLS_Directory | None: ...
+    @overload
+    def __unpack_data__(
+        self,
+        format: _NAMED_STRUCTURE_FORMAT[Literal["IMAGE_BOUND_IMPORT_DESCRIPTOR"]],
+        data: _DATA_TYPE,
+        file_offset: int,
+    ) -> _Bound_Import_Descriptor | None: ...
+    @overload
+    def __unpack_data__(
+        self,
+        format: _NAMED_STRUCTURE_FORMAT[Literal["IMAGE_DEBUG_MISC"]],
+        data: _DATA_TYPE,
+        file_offset: int,
+    ) -> _Debug_Misc | None: ...
+    @overload
+    def __unpack_data__(
+        self,
+        format: _NAMED_STRUCTURE_FORMAT[Literal["CV_INFO_PDB20"]],
+        data: _DATA_TYPE,
+        file_offset: int,
+    ) -> _CV_Info_PDB20 | None: ...
+    @overload
+    def __unpack_data__(
+        self,
+        format: _NAMED_STRUCTURE_FORMAT[Literal["CV_INFO_PDB70"]],
+        data: _DATA_TYPE,
+        file_offset: int,
+    ) -> _CV_Info_PDB70 | None: ...
+    @overload
     def __unpack_data__(
         self, format: _STRUCTURE_FORMAT, data: _DATA_TYPE, file_offset: int
     ) -> Structure | None: ...
+    @overload
+    def __unpack_data_with_bitfields__(
+        self,
+        format: _NAMED_STRUCTURE_FORMAT[
+            Literal["IMAGE_IMPORT_CONTROL_TRANSFER_DYNAMIC_RELOCATION"]
+        ],
+        data: _DATA_TYPE,
+        file_offset: int,
+    ) -> _Import_Control_Transfer_Dynamic_Relocation | None: ...
+    @overload
+    def __unpack_data_with_bitfields__(
+        self,
+        format: _NAMED_STRUCTURE_FORMAT[
+            Literal["IMAGE_INDIR_CONTROL_TRANSFER_DYNAMIC_RELOCATION"]
+        ],
+        data: _DATA_TYPE,
+        file_offset: int,
+    ) -> _Indir_Control_Transfer_Dynamic_Relocation | None: ...
+    @overload
+    def __unpack_data_with_bitfields__(
+        self,
+        format: _NAMED_STRUCTURE_FORMAT[
+            Literal["IMAGE_SWITCHTABLE_BRANCH_DYNAMIC_RELOCATION"]
+        ],
+        data: _DATA_TYPE,
+        file_offset: int,
+    ) -> _Switchtable_Branch_Dynamic_Relocation | None: ...
+    @overload
     def __unpack_data_with_bitfields__(
         self, format: _STRUCTURE_FORMAT, data: _DATA_TYPE, file_offset: int
     ) -> StructureWithBitfields | None: ...
@@ -454,7 +1541,12 @@ class PE(AbstractContextManager["PE"]):
     def get_warnings(self) -> list[str]: ...
     def show_warnings(self) -> None: ...
     def full_load(self) -> None: ...
-    def write(self, filename: str | None = ...) -> bytes | None: ...
+    @overload
+    def write(self) -> bytearray: ...
+    @overload
+    def write(self, filename: str) -> None: ...
+    @overload
+    def write(self, filename: None = ...) -> bytearray: ...
     def parse_sections(self, offset: int) -> None: ...
     def parse_data_directories(
         self,
@@ -499,13 +1591,11 @@ class PE(AbstractContextManager["PE"]):
         level: int = ...,
         dirs: list[int] | None = ...,
     ) -> ResourceDirData | None: ...
-    def parse_resource_data_entry(self, rva: int) -> Structure | None: ...
-    def parse_resource_entry(self, rva: int) -> Structure | None: ...
-
-    class _VersionStruct:
-        OffsetToData: int
-        Size: int
-    def parse_version_information(self, version_struct: _VersionStruct) -> None: ...
+    def parse_resource_data_entry(self, rva: int) -> _Resource_Data_Entry | None: ...
+    def parse_resource_entry(self, rva: int) -> _Resource_Directory_Entry | None: ...
+    def parse_version_information(
+        self, version_struct: _Resource_Data_Entry
+    ) -> None: ...
     def parse_export_directory(
         self, rva: int, size: int, forwarded_only: bool = ...
     ) -> ExportDirData | None: ...
@@ -533,7 +1623,7 @@ class PE(AbstractContextManager["PE"]):
     ) -> list[ImportData]: ...
     def get_import_table(
         self, rva: int, max_length: int | None = ..., contains_addresses: bool = ...
-    ) -> list[Structure] | None: ...
+    ) -> list[_Thunk_Data] | None: ...
     def get_memory_mapped_image(
         self, max_virtual_address: int = ..., ImageBase: int | None = ...
     ) -> bytes: ...
