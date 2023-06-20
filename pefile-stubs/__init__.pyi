@@ -81,13 +81,15 @@ IMAGE_ORDINAL_FLAG64: Literal[0x8000000000000000] = ...
 OPTIONAL_HEADER_MAGIC_PE: Literal[0x10B] = ...
 OPTIONAL_HEADER_MAGIC_PE_PLUS: Literal[0x20B] = ...
 
-class TwoWayDict(dict[_K | _V, _V | _K]):
+class _TwoWayDict(dict[_K | _V, _V | _K]):
     @overload
     def __getitem__(self, key: _K) -> _V: ...
     @overload
     def __getitem__(self, key: _V) -> _K: ...
+    @overload
+    def __getitem__(self, key: _K | _V) -> _K | _V: ...
 
-def two_way_dict(pairs: list[tuple[_K, _V]]) -> TwoWayDict[_K, _V]: ...
+def two_way_dict(pairs: list[tuple[_K, _V]]) -> _TwoWayDict[_K, _V]: ...
 
 _NAME_LOOKUP_LIST = list[tuple[str, bytes]]
 
@@ -238,7 +240,7 @@ class SectionStructure(Structure):
     NumberOfRelocations: _UInt16
     NumberOfLinenumbers: _UInt16
     Characteristics: _UInt32
-    Name: _char[8]
+    Name: _char[8]  # type: ignore[type-arg,valid-type]
 
     PointerToRawData_adj: int | None
     VirtualAddress_adj: int | None
@@ -299,7 +301,7 @@ class StructureWithBitfields(Structure):
 
 class _DOS_Header(Structure):
     name: Literal["IMAGE_DOS_HEADER"]
-    e_magic: _char[2]  # H
+    e_magic: _char[2]  # type: ignore[type-arg,valid-type] # H
     e_cblp: _UInt16
     e_cp: _UInt16
     e_crlc: _UInt16
@@ -313,10 +315,10 @@ class _DOS_Header(Structure):
     e_cs: _UInt16
     e_lfarlc: _UInt16
     e_ovno: _UInt16
-    e_res: _char[8]  # 8s
+    e_res: _char[8]  # type: ignore[type-arg,valid-type] # 8s
     e_oemid: _UInt16
     e_oeminfo: _UInt16
-    e_res2: _char[20]  # 20s
+    e_res2: _char[20]  # type: ignore[type-arg,valid-type] # 20s
     e_lfanew: _Int32
 
 class _File_Header(Structure):
@@ -737,16 +739,16 @@ class _CV_Info_PDB20(_Debug_Type):
 
 class _CV_Info_PDB70(_Debug_Type):
     name: Literal["CV_INFO_PDB70"]
-    CvSignature: _char[4]
+    CvSignature: _char[4]  # type: ignore[type-arg,valid-type]
     Signature_Data1: _UInt32  # Signature is of GUID type
     Signature_Data2: _UInt16
     Signature_Data3: _UInt16
     Signature_Data4: _char
     Signature_Data5: _char
-    Signature_Data6: _char[6]
+    Signature_Data6: _char[6]  # type: ignore[type-arg,valid-type]
     Signature_Data6_value: bytes
     Age: _UInt32
-    PdbFileName: _char[int]  # (Debug_Directory.SizeOfData - sizeof(CV_INFO_PDB70))
+    PdbFileName: _char[int]  # type: ignore[type-arg,valid-type] # (Debug_Directory.SizeOfData - sizeof(CV_INFO_PDB70))
     Signature_String: str
 
 # Misc
@@ -856,12 +858,12 @@ class ExceptionsDirEntryData(_DataContainer_Struct[_Runtime_Function]):
     unwindinfo: UnwindInfo
 
 class UnwindInfo(StructureWithBitfields):
-    Version: _char[3]
-    Flags: _char[5]
+    Version: _char[3]  # type: ignore[type-arg,valid-type]
+    Flags: _char[5]  # type: ignore[type-arg,valid-type]
     SizeOfProlog: _char
     CountOfCodes: int
-    FrameRegister: _char[4]
-    FrameOffset: _char[4]
+    FrameRegister: _char[4]  # type: ignore[type-arg,valid-type]
+    FrameOffset: _char[4]  # type: ignore[type-arg,valid-type]
 
     UNW_FLAG_EHANDLER: Literal[0, 0x01]
     UNW_FLAG_UHANDLER: Literal[0, 0x02]
@@ -878,8 +880,8 @@ class UnwindInfo(StructureWithBitfields):
 
 class _Unwind_Code_Base(UnwindInfo):
     CodeOffset: _char
-    UnwindOp: _char[4]
-    OpInfo: _char[4]
+    UnwindOp: _char[4]  # type: ignore[type-arg,valid-type]
+    OpInfo: _char[4]  # type: ignore[type-arg,valid-type]
 
 class _Unwind_Code(_Unwind_Code_Base):
     name: Literal["UNWIND_CODE"]
@@ -913,7 +915,7 @@ class _Unwind_Code_Save_Reg_Far(_Unwind_Code_Base):
 
 class _Unwind_Code_Save_XMM(_Unwind_Code_Base):
     name: Literal["UNWIND_CODE_SAVE_XMM128"]
-    Reg: _char[4]
+    Reg: _char[4]  # type: ignore[type-arg,valid-type]
     OffsetIn2Qwords: _UInt16
 
 class _Unwind_Code_Save_XMM_Far(_Unwind_Code_Base):
@@ -926,11 +928,11 @@ _Unwind_Code_Push_Frame = _Unwind_Code
 class _Unwind_Code_Epilog_Marker(_Unwind_Code_Base):
     name: Literal["UNWIND_CODE_EPILOG"]
     Size: _char
-    UnwindOp: _char[4]
-    Flags: _char[4]
+    UnwindOp: _char[4]  # type: ignore[type-arg,valid-type]
+    Flags: _char[4]  # type: ignore[type-arg,valid-type]
     OffsetLow: _char
-    Unused: _char[4]
-    OffsetHigh: _char[4]
+    Unused: _char[4]  # type: ignore[type-arg,valid-type]
+    OffsetHigh: _char[4]  # type: ignore[type-arg,valid-type]
 
 class PrologEpilogOp(ABC, Generic[_Unwind_Code_Type]):
     struct: _Unwind_Code_Type
@@ -1084,7 +1086,7 @@ class PE(AbstractContextManager["PE"]):
         Literal["IMAGE_THUNK_DATA"]
     ] = ...
     __IMAGE_THUNK_DATA64_format__: _NAMED_STRUCTURE_FORMAT[
-        Literal["IMAGE_THUNK_DATA64"]
+        Literal["IMAGE_THUNK_DATA"]
     ] = ...
     __IMAGE_DEBUG_DIRECTORY_format__: _NAMED_STRUCTURE_FORMAT[
         Literal["IMAGE_DEBUG_DIRECTORY"]
@@ -1118,13 +1120,13 @@ class PE(AbstractContextManager["PE"]):
         Literal["IMAGE_TLS_DIRECTORY"]
     ] = ...
     __IMAGE_TLS_DIRECTORY64_format__: _NAMED_STRUCTURE_FORMAT[
-        Literal["IMAGE_TLS_DIRECTORY64"]
+        Literal["IMAGE_TLS_DIRECTORY"]
     ] = ...
     __IMAGE_LOAD_CONFIG_DIRECTORY_format__: _NAMED_STRUCTURE_FORMAT[
         Literal["IMAGE_LOAD_CONFIG_DIRECTORY"]
     ] = ...
     __IMAGE_LOAD_CONFIG_DIRECTORY64_format__: _NAMED_STRUCTURE_FORMAT[
-        Literal["IMAGE_LOAD_CONFIG_DIRECTORY64"]
+        Literal["IMAGE_LOAD_CONFIG_DIRECTORY"]
     ] = ...
     __IMAGE_DYNAMIC_RELOCATION_TABLE_format__: _NAMED_STRUCTURE_FORMAT[
         Literal["IMAGE_DYNAMIC_RELOCATION_TABLE"]

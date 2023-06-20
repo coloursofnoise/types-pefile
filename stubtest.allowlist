@@ -1,0 +1,16 @@
+pefile.DEBUG_TYPE
+pefile.DIRECTORY_ENTRY
+pefile.DLL_CHARACTERISTICS
+pefile.IMAGE_CHARACTERISTICS
+pefile.LANG
+pefile.MACHINE_TYPE
+pefile.REGISTERS
+pefile.RELOCATION_TYPE
+pefile.RESOURCE_TYPE
+pefile.SECTION_CHARACTERISTICS
+pefile.SUBLANG
+pefile.SUBSYSTEM_TYPE
+pefile.UNWIND_INFO_FLAGS
+
+pefile._generated.*
+pefile.ordlookup.*
