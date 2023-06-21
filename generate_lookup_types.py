@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 
-"""Generate accurate type stubs for pefile lookup dicts.
+"""Generate accurate type stubs for pefile lookup dicts and structure formats.
 
 Parsing the AST allows for automatically retrieving two_way_dict lookups based
 on what variables were initialized with a call to `two_way_dict`.
@@ -23,7 +23,17 @@ def find_source(code_lines: list[str], node: ast.expr):
     return code_lines[node.lineno - 1][node.col_offset : node.end_col_offset]
 
 
-def format_value(val: Any, int_lookup: dict[int, str] | None = None):
+class VarRef:
+    """Special type for referring to a non-Literal type hint"""
+
+    def __init__(self, var) -> None:
+        self.var = var
+
+    def __repr__(self) -> str:
+        return self.var
+
+
+def format_value(val: Any, *, int_lookup: dict[int, str] | None = None):
     """Format a value to be used as a `Literal` type hint.
 
     :param val: Value to be formatted.
@@ -41,7 +51,11 @@ def format_value(val: Any, int_lookup: dict[int, str] | None = None):
     if isinstance(val, int):
         return f"Literal[{int_lookup.get(val, val)}]"
     if isinstance(val, (tuple, list)):
-        return "tuple[" + ",".join([format_value(v, int_lookup) for v in val]) + "]"
+        return (
+            "tuple["
+            + ",".join([format_value(v, int_lookup=int_lookup) for v in val])
+            + "]"
+        )
     return repr(val)
 
 
@@ -64,15 +78,22 @@ def maybe_int(val: str):
         return val
 
 
-def write_header(file):
+def write_header(file: IO[str], *, lookup: bool):
     file.write(
-        f"""
-#fmt: off
+        f"""# fmt: off
 \"\"\"
 THIS FILE WAS AUTOMATICALLY GENERATED BASED ON pefile {pefile.__version__}
 \"\"\"
 
-from typing import Literal, overload, TypeVar
+"""
+    )
+    type_imports = ("Literal",)
+    if lookup:
+        type_imports = type_imports + ("overload", "TypeVar")
+    file.write("from typing import " + ", ".join(type_imports))
+    if lookup:
+        file.write(
+            """
 
 _K = TypeVar("_K")
 _V = TypeVar("_V")
@@ -83,11 +104,9 @@ class _NAME_LOOKUP(dict[_K | _V, _V | _K]):
     @overload
     def __getitem__(self, key: _V) -> _K: ...
     @overload
-    def __getitem__(self, key: _K | _V) -> _K | _V: ...
-
-
-"""
-    )
+    def __getitem__(self, key: _K | _V) -> _K | _V: ..."""
+        )
+    file.write("\n\n\n")
 
 
 def write_dict(
@@ -109,7 +128,7 @@ def write_dict(
     )
 
 
-def write_literals(file, classname, values):
+def write_literals(file: IO[str], classname, values):
     values_str = "\n".join(f"    {val}," for val in values)
     file.write(
         f"""{classname} = Literal[
@@ -160,7 +179,7 @@ if __name__ == "__main__":
     os.makedirs(generated_dir, exist_ok=True)
 
     with open(os.path.join(generated_dir, "pefile_lookup.pyi"), "w") as file:
-        write_header(file)
+        write_header(file, lookup=True)
 
         for name, source in lookup_tables:
             # extract the source code for elements in the source list
@@ -172,7 +191,10 @@ if __name__ == "__main__":
 
             hex_lookup = {int(c, 16): c for t in constants for c in t if is_hex(c)}
             items = (
-                (format_value(key, hex_lookup), format_value(val, hex_lookup))
+                (
+                    format_value(key, int_lookup=hex_lookup),
+                    format_value(val, int_lookup=hex_lookup),
+                )
                 for key, val in getattr(pefile, name).items()
             )
             write_dict(file, f"{name}_DICT", (int, str), items)
@@ -187,7 +209,7 @@ if __name__ == "__main__":
         # take only the last portion of the module name
         module_name = module.__name__.split(".")[-1]
         with open(os.path.join(generated_dir, module_name + ".pyi"), "w") as file:
-            write_header(file)
+            write_header(file, lookup=True)
             # parsing the module source is not required here because there are no
             # special numeric literals.
             ord_dict = getattr(module, "ord_names")
@@ -198,3 +220,23 @@ if __name__ == "__main__":
 
             write_literals(file, "ORD_NAMES_DICT_VALUES", ord_dict.keys())
             write_literals(file, "ORD_NAMES_DICT_NAMES", ord_dict.values())
+
+    with open(os.path.join(generated_dir, "pefile_formats.pyi"), "w") as file:
+        write_header(file, lookup=False)
+        formats = [
+            (attr, val)
+            for attr, val in pefile.PE.__dict__.items()
+            if attr.endswith("_format__") and isinstance(val, tuple)
+        ]
+        for attr, value in formats:
+            fmt = attr.strip("_")
+            fmt_name = fmt + "_name"
+            file.write("{} = {}\n".format(fmt_name, format_value(value[0])))
+            value = tuple((VarRef(fmt_name), *value[1:]))
+            file.write("{} = {}\n".format(attr.strip("_"), format_value(value)))
+
+        file.write("\n\n\n")
+        file.write("class PE:\n")
+        file.writelines(
+            ("    {}: {} = ...\n".format(attr, attr.strip("_")) for attr, _ in formats)
+        )
