@@ -175,10 +175,12 @@ if __name__ == "__main__":
         lookup_tables.extend(((name, source_list) for name in target_names))
 
     working_dir = os.path.dirname(__file__)
-    generated_dir = os.path.join(working_dir, "pefile-stubs", "_generated")
-    os.makedirs(generated_dir, exist_ok=True)
+    pefile_stubs = os.path.join(working_dir, "pefile-stubs", "_generated")
+    os.makedirs(pefile_stubs, exist_ok=True)
+    ordlookup_stubs = os.path.join(working_dir, "ordlookup-stubs", "_generated")
+    os.makedirs(ordlookup_stubs, exist_ok=True)
 
-    with open(os.path.join(generated_dir, "pefile_lookup.pyi"), "w") as file:
+    with open(os.path.join(pefile_stubs, "pefile_lookup.pyi"), "w") as file:
         write_header(file, lookup=True)
 
         for name, source in lookup_tables:
@@ -208,7 +210,7 @@ if __name__ == "__main__":
     for module in [pefile.ordlookup.oleaut32, pefile.ordlookup.ws2_32]:
         # take only the last portion of the module name
         module_name = module.__name__.split(".")[-1]
-        with open(os.path.join(generated_dir, module_name + ".pyi"), "w") as file:
+        with open(os.path.join(ordlookup_stubs, module_name + ".pyi"), "w") as file:
             write_header(file, lookup=True)
             # parsing the module source is not required here because there are no
             # special numeric literals.
@@ -221,7 +223,7 @@ if __name__ == "__main__":
             write_literals(file, "ORD_NAMES_DICT_VALUES", ord_dict.keys())
             write_literals(file, "ORD_NAMES_DICT_NAMES", ord_dict.values())
 
-    with open(os.path.join(generated_dir, "pefile_formats.pyi"), "w") as file:
+    with open(os.path.join(pefile_stubs, "pefile_formats.pyi"), "w") as file:
         write_header(file, lookup=False)
         formats = [
             (attr, val)

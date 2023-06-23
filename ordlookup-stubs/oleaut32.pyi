@@ -1,3 +1,3 @@
-from .._generated.oleaut32 import ORD_NAMES_DICT
+from ._generated.oleaut32 import ORD_NAMES_DICT
 
 ord_names: ORD_NAMES_DICT = ...

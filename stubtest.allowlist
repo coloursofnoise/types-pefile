@@ -13,4 +13,4 @@ pefile.SUBSYSTEM_TYPE
 pefile.UNWIND_INFO_FLAGS
 
 pefile._generated.*
-pefile.ordlookup.*
+ordlookup._generated.*

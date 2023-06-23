@@ -1,7 +1,7 @@
 from typing import overload, Literal
 from . import ws2_32 as ws2_32
 from . import oleaut32 as oleaut32
-from .._generated import oleaut32 as _gen_oleaut32, ws2_32 as _gen_ws2_32
+from ._generated import oleaut32 as _gen_oleaut32, ws2_32 as _gen_ws2_32
 
 ords: _ORDS_DICT = ...
 

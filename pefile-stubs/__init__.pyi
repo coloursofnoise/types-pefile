@@ -2,7 +2,7 @@ from contextlib import AbstractContextManager
 from abc import ABC
 import mmap
 from types import TracebackType
-from . import ordlookup as ordlookup
+import ordlookup as ordlookup
 from ._generated import pefile_lookup as _gen, pefile_formats as _fmt
 from typing import (
     Any,
