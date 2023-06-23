@@ -1,6 +1,12 @@
 # fmt: off
 """
 THIS FILE WAS AUTOMATICALLY GENERATED BASED ON pefile 2023.2.7
+
+Copyright (C) 2023  coloursofnoise
+
+This software is licensed under the GNU General Public License, version 3 or
+later (GPLv3+). A full copy of the license is available in the COPYING file
+located at the root of the project, or at <https://www.gnu.org/licenses/>.
 """
 
 from typing import Literal, overload, TypeVar

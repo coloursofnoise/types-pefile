@@ -1,3 +1,14 @@
+# pefile-stubs - Python type stubs for pefile
+#
+# Copyright (C) 2023  coloursofnoise
+#
+# This software is licensed under the GNU General Public License, version 3 or
+# later (GPLv3+). A full copy of the license is available in the COPYING file
+# located at the root of the project, or at <https://www.gnu.org/licenses/>.
+
+# WARNING: Using docstrings in a type stub file will override the regular
+# project docstrings in some IDEs
+
 from contextlib import AbstractContextManager
 from abc import ABC
 import mmap

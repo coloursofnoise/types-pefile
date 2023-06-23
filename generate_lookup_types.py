@@ -11,6 +11,12 @@ dictionary that was passed to the `two_way_dict` call, we can use the line and
 column information in the AST to extract the source for each constant and use
 that in the generated type stub. We can also use these string constants when
 constructing the NAMES and VALUES Literal unions.
+
+Copyright (C) 2023  coloursofnoise
+
+This software is licensed under the GNU General Public License, version 3 or
+later (GPLv3+). A full copy of the license is available in the COPYING file
+located at the root of the project, or at <https://www.gnu.org/licenses/>.
 """
 
 import os
@@ -83,7 +89,8 @@ def write_header(file: IO[str], *, lookup: bool):
         f"""# fmt: off
 \"\"\"
 THIS FILE WAS AUTOMATICALLY GENERATED BASED ON pefile {pefile.__version__}
-\"\"\"
+
+{"Copyright" + __doc__.split("Copyright")[1]}\"\"\"
 
 """
     )
