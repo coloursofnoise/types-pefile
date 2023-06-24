@@ -1,3 +1,4 @@
+# Inferred as dict[any, any] at runtime
 pefile.DEBUG_TYPE
 pefile.DIRECTORY_ENTRY
 pefile.DLL_CHARACTERISTICS
@@ -11,6 +12,11 @@ pefile.SECTION_CHARACTERISTICS
 pefile.SUBLANG
 pefile.SUBSYSTEM_TYPE
 pefile.UNWIND_INFO_FLAGS
+
+# Inferred as dict[any, any] at runtime
+ordlookup.oleaut32.ord_names
+ordlookup.ws2_32.ord_names
+ordlookup.ords
 
 pefile._generated.*
 ordlookup._generated.*

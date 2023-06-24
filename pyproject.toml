@@ -1,0 +1,34 @@
+[build-system]
+requires = ["setuptools"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "types-pefile"
+version = "0+develop" # PyPI should refuse local version
+description = "Type stubs for pefile."
+authors = [
+    { name = "ColoursOfNoise", email = "coloursofthenoise@gmail.com" }
+]
+readme = "README.md"
+license = { text = "GPLv3+" }
+keywords = ["pefile", "stubs", "typing"]
+classifiers = [
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: GNU General Public License v3 or later (GPLv3+)",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3",
+    "Typing :: Stubs Only"
+]
+dependencies = [
+    "pefile"
+]
+
+[project.urls]
+"Homepage" = "https://github.com/coloursofnoise/types-pefile"
+
+[tool.setuptools]
+packages = ["pefile-stubs", "ordlookup-stubs"]
+
+[tool.setuptools.package-data]
+pefile_stubs = ["__init__.pyi", "_generated/*.pyi"]
+ordlookup_stubs = ["__init__.pyi", "*.pyi", "_generated/*.pyi"]
