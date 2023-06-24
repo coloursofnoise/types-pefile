@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "types-pefile"
-version = "0+develop" # PyPI should refuse local version
+version = "2023.2.7-0"
 description = "Type stubs for pefile."
 authors = [
     { name = "ColoursOfNoise", email = "coloursofthenoise@gmail.com" }
@@ -20,7 +20,7 @@ classifiers = [
     "Typing :: Stubs Only"
 ]
 dependencies = [
-    "pefile"
+    "pefile~=2023.2.7"
 ]
 
 [project.urls]

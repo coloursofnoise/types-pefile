@@ -575,28 +575,6 @@ class _Switchtable_Branch_Dynamic_Relocation(_Dynamic_Relocation_Bitfield):
     PageRelativeOffset: int  # H:12
     RegisterNumber: int  # H:4
 
-class _Function_Override_Header(Structure):
-    name: _fmt.IMAGE_FUNCTION_OVERRIDE_HEADER_format_name
-    FuncOverrideSize: _UInt32
-
-class _Function_Override_Dynamic_Relocation(Structure):
-    name: _fmt.IMAGE_FUNCTION_OVERRIDE_DYNAMIC_RELOCATION_format_name
-    OriginalRva: _UInt32
-    BDDOffset: _UInt32
-    RvaSize: _UInt32
-    BaseRelocSize: _UInt32
-
-class _BDD_Info(Structure):
-    name: _fmt.IMAGE_BDD_INFO_format_name
-    Version: _UInt32
-    BDDSize: _UInt32
-
-class _BDD_Dynamic_Relocation(Structure):
-    name: _fmt.IMAGE_BDD_DYNAMIC_RELOCATION_format_name
-    Left: _UInt16
-    Right: _UInt16
-    Value: _UInt32
-
 class _TLS_Directory_Base(Structure, Generic[_Ptr]):
     SizeOfZeroFill: _UInt32
     Characteristics: _UInt32
@@ -830,17 +808,6 @@ class DebugData(_DataContainer_Struct[_Debug_Directory]):
 
 class DynamicRelocationData(_DataContainer_Struct[_Dynamic_Relocation]):
     relocations: list[BaseRelocationData]
-
-class FunctionOverrideData(_DataContainer_Struct[_Dynamic_Relocation]):
-    bdd_relocs: list[BddDynamicRelocationData]
-    func_relocs: list[FunctionOverrideDynamicRelocationData]
-
-class FunctionOverrideDynamicRelocationData(
-    _DataContainer_Struct[_Function_Override_Dynamic_Relocation]
-):
-    relocations: list[BaseRelocationData]
-
-class BddDynamicRelocationData(_DataContainer_Struct[_BDD_Dynamic_Relocation]): ...
 
 class BaseRelocationData(_DataContainer_Struct[_Base_Relocation]):
     entries: list[RelocationData]
@@ -1281,34 +1248,6 @@ class PE(AbstractContextManager["PE"], _fmt.PE):
     @overload
     def __unpack_data__(
         self,
-        format: _fmt.IMAGE_FUNCTION_OVERRIDE_HEADER_format,
-        data: _DATA_TYPE,
-        file_offset: int,
-    ) -> _Function_Override_Header | None: ...
-    @overload
-    def __unpack_data__(
-        self,
-        format: _fmt.IMAGE_FUNCTION_OVERRIDE_DYNAMIC_RELOCATION_format,
-        data: _DATA_TYPE,
-        file_offset: int,
-    ) -> _Function_Override_Dynamic_Relocation | None: ...
-    @overload
-    def __unpack_data__(
-        self,
-        format: _fmt.IMAGE_BDD_INFO_format,
-        data: _DATA_TYPE,
-        file_offset: int,
-    ) -> _BDD_Info | None: ...
-    @overload
-    def __unpack_data__(
-        self,
-        format: _fmt.IMAGE_BDD_DYNAMIC_RELOCATION_format,
-        data: _DATA_TYPE,
-        file_offset: int,
-    ) -> _BDD_Dynamic_Relocation | None: ...
-    @overload
-    def __unpack_data__(
-        self,
         format: _fmt.IMAGE_LOAD_CONFIG_DIRECTORY_format,
         data: _DATA_TYPE,
         file_offset: int,
@@ -1462,7 +1401,6 @@ class PE(AbstractContextManager["PE"], _fmt.PE):
         dynamic_value_reloc_table_offset: int,
         dynamic_value_reloc_table_section: int,
     ) -> list[DynamicRelocationData] | None: ...
-    def parse_function_override_data(self, rva: int) -> list[FunctionOverrideData]: ...
     def parse_relocations_directory(
         self, rva: int, size: int
     ) -> list[BaseRelocationData]: ...
